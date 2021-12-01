@@ -74,6 +74,7 @@ public class ETLDBOutputFormat<K extends DBWritable, V> extends DBOutputFormat<K
       return new DBRecordWriter(connection, statement) {
 
         private boolean emptyData = true;
+        private long numWrittenRecords = 0;
 
         //Implementation of the close method below is the exact implementation in DBOutputFormat except that
         //we check if there is any data to be written and if not, we skip executeBatch call.
@@ -116,6 +117,13 @@ public class ETLDBOutputFormat<K extends DBWritable, V> extends DBOutputFormat<K
           try {
             key.write(getStatement());
             getStatement().addBatch();
+
+            // Submit a batch to the SQL engine every 10k records
+            // This is done to reduce memory usage in the worker, as processed records can now be GC'd.
+            numWrittenRecords++;
+            if (numWrittenRecords % 10000 == 0) {
+              getStatement().executeBatch();
+            }
           } catch (SQLException e) {
             LOG.warn("Failed to write value to database", e);
           }
